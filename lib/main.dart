@@ -1,0 +1,1088 @@
+import 'package:cached_network_image/cached_network_image.dart';
+import 'dart:async';
+import 'dart:io';
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:parse_server_sdk/parse_server_sdk.dart';
+import 'MapScreen.dart';
+import 'Coments.dart';
+
+
+
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final keyApplicationId = 'uq3mIDo6JrLvcUXVIr8PUU56gTXbMFtqM2kuPPga';
+  final keyClientKey = 'jcYVbSnDf2phLSJJV4RYMb3LgU2t84KUb6vOV0Ge';
+  final keyParseServerUrl = 'https://parseapi.back4app.com';
+
+  await Parse().initialize(keyApplicationId, keyParseServerUrl,
+      clientKey: keyClientKey, debug: true);
+
+  runApp(MaterialApp(
+    title: 'Naprawmy sobie miasto',
+   debugShowCheckedModeBanner: false,
+    home: MyApp(),
+  ));
+}
+
+class MyApp extends StatelessWidget {
+  Future<bool> hasUserLogged() async {
+    ParseUser? currentUser = await ParseUser.currentUser() as ParseUser?;
+    if (currentUser == null) {
+      return false;
+    }
+    //Checks whether the user's session token is valid
+    final ParseResponse? parseResponse =
+    await ParseUser.getCurrentUserFromServer(currentUser.sessionToken!);
+
+    if (parseResponse?.success == null || !parseResponse!.success) {
+      //Invalid session. Logout
+      await currentUser.logout();
+      return false;
+    } else {
+      return true;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Naprawmy sobie miasto',
+      theme: ThemeData(
+        visualDensity: VisualDensity.adaptivePlatformDensity, colorScheme: ColorScheme.fromSwatch(primarySwatch: Colors.lightGreen).copyWith(background: Colors.grey),
+      ),
+      home: FutureBuilder<bool>(
+          future: hasUserLogged(),
+          builder: (context, snapshot) {
+            switch (snapshot.connectionState) {
+              case ConnectionState.none:
+              case ConnectionState.waiting:
+                return Scaffold(
+                  body: Center(
+                    child: Container(
+                        width: 100,
+                        height: 100,
+                        child: CircularProgressIndicator()),
+                  ),
+                );
+              default:
+                if (snapshot.hasData && snapshot.data!) {
+                  return UserPage();
+                } else {
+                  return LoginPage();
+                }
+            }
+          }),
+    );
+  }
+}
+class LoginPage extends StatefulWidget {
+  @override
+  _LoginPageState createState() => _LoginPageState();
+}
+
+class _LoginPageState extends State<LoginPage> {
+  final controllerUsername = TextEditingController();
+  final controllerPassword = TextEditingController();
+  bool isLoggedIn = false;
+
+  @override
+  Widget build(BuildContext context) {
+
+    return Scaffold(
+        appBar: AppBar(
+
+          title: const Text('Naprawmy sobie miasto'),
+        ),
+        body: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(
+                  height: 16,
+                ),
+                TextField(
+                  controller: controllerUsername,
+                  enabled: !isLoggedIn,
+                  keyboardType: TextInputType.text,
+                  textCapitalization: TextCapitalization.none,
+                  autocorrect: false,
+                  decoration: InputDecoration(
+                      border: OutlineInputBorder(
+                          borderSide: BorderSide(color: Colors.black)),
+                      labelText: 'Login'),
+                ),
+                SizedBox(
+                  height: 8,
+                ),
+                TextField(
+                  controller: controllerPassword,
+                  enabled: !isLoggedIn,
+                  obscureText: true,
+                  keyboardType: TextInputType.text,
+                  textCapitalization: TextCapitalization.none,
+                  autocorrect: false,
+                  decoration: InputDecoration(
+                      border: OutlineInputBorder(
+                          borderSide: BorderSide(color: Colors.black)),
+                      labelText: 'Hasło'),
+                ),
+                SizedBox(
+                  height: 16,
+                ),
+                Container(
+                  height: 50,
+                  child: ElevatedButton(
+                    child: const Text('Zaloguj'),
+                    onPressed: isLoggedIn ? null : () => doUserLogin(),
+                  ),
+                ),
+                SizedBox(
+                  height: 16,
+                ),
+                Container(
+                  height: 50,
+                  child: ElevatedButton(
+                    child: const Text('Rejestracja'),
+                    onPressed: () => navigateToSignUp(),
+                  ),
+                ),
+                SizedBox(
+                  height: 16,
+                ),
+              ],
+            ),
+          ),
+        ));
+  }
+
+  void doUserLogin() async {
+    final username = controllerUsername.text.trim();
+    final password = controllerPassword.text.trim();
+
+    final user = ParseUser(username, password, null);
+
+    var response = await user.login();
+
+    if (response.success) {
+      navigateToUser();
+    } else {
+      Message.showError(context: context, message: response.error!.message);
+    }
+  }
+
+  void navigateToUser() {
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (context) => UserPage()),
+          (Route<dynamic> route) => false,
+    );
+  }
+
+  void navigateToSignUp() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => SignUpPage()),
+    );
+  }
+
+
+}
+class UserPage extends StatelessWidget {
+  ParseUser? currentUser;
+  PickedFile? pickedFile;
+
+  List<ParseObject> results = <ParseObject>[];
+  double selectedDistance = 3000;
+
+
+  Future<ParseUser?> getUser() async {
+    currentUser = await ParseUser.currentUser() as ParseUser?;
+    return currentUser;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    void doUserLogout() async {
+      var response = await currentUser!.logout();
+      if (response.success) {
+        Message.showSuccess(
+            context: context,
+            message: 'User was successfully logout!',
+            onPressed: () {
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (context) => LoginPage()),
+                    (Route<dynamic> route) => false,
+              );
+            });
+      } else {
+        Message.showError(context: context, message: response.error!.message);
+      }
+    }
+
+    return Scaffold(
+        appBar: AppBar(
+
+        ),
+        body: FutureBuilder<ParseUser?>(
+            future: getUser(),
+            builder: (context, snapshot) {
+              switch (snapshot.connectionState) {
+                case ConnectionState.none:
+                case ConnectionState.waiting:
+                  return Center(
+                    child: Container(
+                        width: 100,
+                        height: 100,
+                        child: CircularProgressIndicator()),
+                  );
+                default:
+                  return Scaffold(
+                      body: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            SizedBox(
+                              height: 20,
+                            ),
+
+                            Container(
+                              height: 200,
+                              child: Image.network(
+                                  'https://upload.wikimedia.org/wikipedia/commons/c/c8/POL_S%C5%82upsk_herb_S%C5%82upska.jpg'),
+                            ),
+                            SizedBox(
+                              height: 16,
+                            ),
+                            Center(
+
+                            ),
+                            SizedBox(
+                              height: 16,
+                            ),
+                            Container(
+                              height: 50,
+                              child: ElevatedButton(
+                                child: Text('Dodaj zgłoszenie'),
+                                style: ElevatedButton.styleFrom(),
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(builder: (context) => SavePage()),
+                                  );
+                                },
+                              ),
+                            ),
+                            SizedBox(
+                              height: 8,
+                            ),
+                            Container(
+                                height: 50,
+                                child: ElevatedButton(
+                                  child: Text('Przesłane zgłoszenia'),
+                                  onPressed: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(builder: (context) => DisplayPage()),
+                                    );
+                                  },
+                                )),
+                            SizedBox(
+                              height: 8,
+                            ),
+                            Container(
+                              height: 50,
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(backgroundColor: Colors.grey),
+                                child: const Text('Wyloguj'),
+                                onPressed: () => doUserLogout(),
+                              ),
+                            )],
+                        ),
+                      ));
+              }
+            }));
+  }
+}
+
+class SignUpPage extends StatefulWidget {
+  @override
+  _SignUpPageState createState() => _SignUpPageState();
+}
+
+class _SignUpPageState extends State<SignUpPage> {
+  final controllerUsername = TextEditingController();
+  final controllerPassword = TextEditingController();
+  final controllerEmail = TextEditingController();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+        appBar: AppBar(
+          title: const Text('Rejestracja'),
+        ),
+        body: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+
+
+                SizedBox(
+                  height: 16,
+                ),
+
+                SizedBox(
+                  height: 16,
+                ),
+                TextField(
+                  controller: controllerUsername,
+                  keyboardType: TextInputType.text,
+                  textCapitalization: TextCapitalization.none,
+                  autocorrect: false,
+                  decoration: InputDecoration(
+                      border: OutlineInputBorder(
+                          borderSide: BorderSide(color: Colors.black)),
+                      labelText: 'Nazwa użytkownika'),
+                ),
+                SizedBox(
+                  height: 8,
+                ),
+                TextField(
+                  controller: controllerEmail,
+                  keyboardType: TextInputType.emailAddress,
+                  textCapitalization: TextCapitalization.none,
+                  autocorrect: false,
+                  decoration: InputDecoration(
+                      border: OutlineInputBorder(
+                          borderSide: BorderSide(color: Colors.black)),
+                      labelText: 'E-mail'),
+                ),
+                SizedBox(
+                  height: 8,
+                ),
+                TextField(
+                  controller: controllerPassword,
+                  obscureText: true,
+                  keyboardType: TextInputType.text,
+                  textCapitalization: TextCapitalization.none,
+                  autocorrect: false,
+                  decoration: InputDecoration(
+                      border: OutlineInputBorder(
+                          borderSide: BorderSide(color: Colors.black)),
+                      labelText: 'Hasło'
+                  ),
+                ),
+                SizedBox(
+                  height: 8,
+                ),
+                Container(
+                  height: 50,
+                  child: ElevatedButton(
+                    child: const Text('Załóż konto'),
+                    onPressed: () => doUserRegistration(),
+                  ),
+                )
+              ],
+            ),
+          ),
+        ));
+  }
+
+  void doUserRegistration() async {
+    final username = controllerUsername.text.trim();
+    final email = controllerEmail.text.trim();
+    final password = controllerPassword.text.trim();
+
+    final user = ParseUser.createUser(username, password, email);
+
+    var response = await user.signUp();
+
+    if (response.success) {
+      Message.showSuccess(
+          context: context,
+          message: 'User was successfully created!',
+          onPressed: () async {
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (context) => UserPage()),
+                  (Route<dynamic> route) => false,
+            );
+          });
+    } else {
+      Message.showError(context: context, message: response.error!.message);
+    }
+  }
+}
+
+
+
+class SavePage extends StatefulWidget {
+  @override
+  _SavePageState createState() => _SavePageState();
+}
+
+class _SavePageState extends State<SavePage> {
+
+
+  final Opis = TextEditingController();
+
+
+  void send() async {
+    final Descriptrion = Opis.text.trim();
+
+    final Dane = ParseObject("Zgloszenie")
+      ..set("Opis", Descriptrion)..set("Kategoria", selectedItem)..set("Status", status)..set('file', parseFile);
+    await Dane.save();
+
+  }
+
+  //Zdjęcia!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+  String? status;
+
+  PickedFile? pickedFile;
+
+  var zmienna = 0;
+
+  Future state() async {
+    zmienna = zmienna + 1;
+  }
+
+
+//Lista
+
+
+  String? selectedItem;
+  List<String> items = [];
+  void initState() {
+    super.initState();
+    fetchDataFromBack4App();
+  }
+
+  Future<void> fetchDataFromBack4App() async {
+    try {
+      await Parse().initialize(
+        'uq3mIDo6JrLvcUXVIr8PUU56gTXbMFtqM2kuPPga',
+        'https://parseapi.back4app.com',
+        clientKey: 'jcYVbSnDf2phLSJJV4RYMb3LgU2t84KUb6vOV0Ge',
+        autoSendSessionId: true,
+        debug: true,
+      );
+
+      final queryBuilder = QueryBuilder(ParseObject('type'));
+      final response = await queryBuilder.query();
+
+      if (response.success && response.results != null) {
+        setState(() {
+          items = response.results!.map<String>((result) {
+            return result.get<String>('fieldName');
+          }).toList();
+        });
+      } else {
+        print('Failed to fetch data from Back4App: ${response.error}');
+      }
+    } catch (e) {
+      print('Error initializing Parse: $e');
+    }
+  }
+
+
+
+  bool isLoading = false;
+  ParseFileBase? parseFile;
+
+  List<ParseObject> results = <ParseObject>[];
+  double selectedDistance = 3000;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+
+        appBar: AppBar(
+          title: Text("Przesłane zgłoszenia"),
+        ),
+
+
+        body: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+
+              SizedBox(
+                height: 16,
+              ),
+
+              //Mapa
+              ElevatedButton(
+                child: Text('Wybierz lokalizacje'),
+                style: ElevatedButton.styleFrom(),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => MapScreen()),
+                  );
+                },
+              ),
+
+
+              SizedBox(
+                height: 16,
+              ),
+              //Zdjęcia
+
+
+              SizedBox(
+                height: 16,
+              ),
+              Column(
+                children: [
+                  GestureDetector(
+                    child: pickedFile != null
+                        ? Container(
+                        width: 250,
+                        height: 250,
+                        decoration:
+                        BoxDecoration(border: Border.all(color: Colors.blue)),
+                        child: kIsWeb
+                            ? Image.network(pickedFile!.path)
+                            : Image.file(File(pickedFile!.path)))
+                        : Container(
+                      width: 150,
+                      height: 150,
+                      decoration:
+                      BoxDecoration(border: Border.all(color: Colors.blue)),
+                      child: Center(
+                        child: Text('Dodaj zdjęcie'),
+                      ),
+                    ),
+                    onTap: () async {
+
+
+                      /*  await  showDialog(context: context, builder: (context)=> AlertDialog(
+                            title: Text("Dodawanie zdjęcia"),
+                            actions: [
+                              ElevatedButton(onPressed:() async{pickImageC();
+                                Navigator.pop(context);},
+                                  child: Text('    Zrób zdjęice     ')),
+                              ElevatedButton(onPressed: () async{pickImage();Navigator.pop(context);
+
+                                }, child: Text('Zdjęcie z galerii'))
+                            ],
+
+                          ));
+*/
+
+                      await showDialog(context: context, builder: (context) =>
+                          AlertDialog(
+                            title: Text("Dodawanie zdjęcia"),
+                            actions: [
+                              ElevatedButton(onPressed: () async {
+                                state();
+                                Navigator.pop(context);
+                              }, child: Text('Zrób zdjęcie')),
+
+                              ElevatedButton(
+                                  onPressed: () => Navigator.pop(context)
+                                  , child: Text('Zdjęcie z galerii'))
+                            ],
+
+                          ));
+
+                      if (zmienna == 1) {
+                        XFile? image =
+                        await ImagePicker().pickImage(
+                            source: ImageSource.camera);
+                        zmienna = zmienna - 1;
+                        if (image != null) {
+                          setState(() {
+                            pickedFile = image as PickedFile?;
+                          });
+                        }
+                      } else if (zmienna == 0) {
+                        XFile? image =
+                        await ImagePicker().pickImage(
+                            source: ImageSource.gallery);
+
+                        if (image != null) {
+                          setState(() {
+                            pickedFile = image as PickedFile?;
+                          });
+                        }
+                      }
+                    },
+
+                  )
+                ],
+
+              ),
+
+
+              SizedBox(
+                height: 16,
+              ),
+
+              Container(
+                width: 240,
+                height: 50,
+                child: DropdownButtonFormField<String>(
+                  value: selectedItem,
+                  items: items.map((item) {
+                    return DropdownMenuItem<String>(
+                      value: item,
+                      child: Text(item),
+                    );
+                  }).toList(),
+                  onChanged: (String? newValue) {
+                    setState(() {
+                      selectedItem = newValue;
+                    });
+                  },
+                ),
+              ),
+
+              SizedBox(
+                height: 16,
+              ),
+              Container(
+                height: 50,
+                child: (
+                    TextFormField(
+
+                      textAlign: TextAlign.center,
+                      controller: Opis,
+                      decoration: InputDecoration(
+                          hintText: "Dodaj opis zgłoszenia"
+                      ),
+                    )
+                ),
+
+
+              ),
+
+
+              SizedBox(
+                height: 16,
+              ),
+
+              Container(
+                height: 50,
+                child: (
+                    ElevatedButton(
+                      child: Text('Wyślij zgłoszenie'),
+                      style: ElevatedButton.styleFrom(primary: Colors.blue),
+
+                      onPressed: pickedFile == null ? null : () async {
+                        setState(() {
+                          isLoading = true;
+                        });
+
+                        if (kIsWeb) {
+                          parseFile =
+                              ParseWebFile(await pickedFile!.readAsBytes(),
+                                  name: "image.jpg");
+                        } else {
+                          parseFile = ParseFile(File(pickedFile!.path));
+                        }
+
+                        status='0';
+                        send();
+
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => UserPage()),
+                        );
+
+                      },
+
+                    )
+
+                ),
+
+              ),
+            ],
+          ),
+        ));
+  }
+
+}
+
+class Zgloszenie {
+  final String id;
+  final String nazwa;
+  final String opis;
+  final DateTime date;
+  final String status;
+  final dynamic imageUrl; // Dodano pole imageUrl
+
+  Zgloszenie({
+    required this.id,
+    required this.nazwa,
+    required this.opis,
+    required this.date,
+    required this.status,
+    required this.imageUrl,
+  });
+  Future<void> updateStatus(String newStatus) async {
+    final queryBuilder = QueryBuilder<ParseObject>(ParseObject('Zgloszenie'))
+      ..whereEqualTo('objectId', id);
+
+    final response = await queryBuilder.query();
+
+    final results = response.results;
+    if (results != null && results.isNotEmpty) {
+      final zgloszenieObject = results.first;
+      zgloszenieObject.set<String>('Status', newStatus);
+      await zgloszenieObject.save();
+    }
+  }
+}
+
+class ZgloszenieListItem extends StatelessWidget {
+  final Zgloszenie zgloszenie;
+
+  const ZgloszenieListItem({required this.zgloszenie});
+
+  @override
+  Widget build(BuildContext context) {
+    Color statusColor = Colors.transparent;
+    if (zgloszenie.status == '0') {
+      statusColor = Colors.yellow;
+    } else if (zgloszenie.status == '1') {
+      statusColor = Colors.green;
+    } else if (zgloszenie.status == '2') {
+      statusColor = Colors.red;
+    } else if (zgloszenie.status == '3') {
+      statusColor = Colors.black;
+    }
+
+    return ListTile(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ZgloszenieDetailsPage(zgloszenie: zgloszenie),
+          ),
+        );
+      },
+      title: Text(zgloszenie.nazwa),
+      subtitle: Text(zgloszenie.opis),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+
+          SizedBox(width: 10),
+          CachedNetworkImage(
+            imageUrl: zgloszenie.imageUrl,
+            fit: BoxFit.cover,
+            width: 50,
+            height: 50,
+          ),
+          Container(
+            width: 50,
+            height: 50,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: statusColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+class ZgloszenieDetailsPage extends StatelessWidget {
+  final Zgloszenie zgloszenie;
+  const ZgloszenieDetailsPage({required this.zgloszenie});
+
+  @override
+  Widget build(BuildContext context) {
+    String statusText = '';
+    if (zgloszenie.status == '0') {
+      statusText = 'Zgłoszenie rozpatrywane';
+    } else if (zgloszenie.status == '1') {
+      statusText = 'Zgłoszenie przyjęte';
+    } else if (zgloszenie.status == '2') {
+      statusText = 'Zgłoszenie odrzucone';
+    } else if (zgloszenie.status == '3') {
+      statusText = 'Zgłoszenie zostało przekazane do wycofania';
+    }
+    bool isButtonEnabled = zgloszenie.status != '3'; // Sprawdzenie czy przycisk powinien być klikalny
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Szczegóły zgłoszenia'),
+      ),
+      body: Padding(
+        padding: EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Nazwa: ${zgloszenie.nazwa}',
+              style: TextStyle(fontSize: 18),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'Opis: ${zgloszenie.opis}',
+              style: TextStyle(fontSize: 16),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'Data: ${zgloszenie.date}',
+              style: TextStyle(fontSize: 16),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'Status: ${statusText}',
+              style: TextStyle(fontSize: 16),
+            ),
+            SizedBox(height: 8),
+            Expanded(
+              child: GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ImageFullScreenPage(
+                        imageUrl: zgloszenie.imageUrl,
+                      ),
+                    ),
+                  );
+                },
+                child: CachedNetworkImage(
+                  imageUrl: zgloszenie.imageUrl,
+                  fit: BoxFit.contain,
+                  placeholder: (context, url) => CircularProgressIndicator(),
+                  errorWidget: (context, url, error) => Icon(Icons.error),
+                ),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: isButtonEnabled
+                  ? () {
+                zgloszenie.updateStatus('3'); // Zaktualizuj status na '3'
+                Navigator.pop(context);
+              }
+                  : null, // Ustaw onPressed na null, jeśli przycisk ma być nieklikalny
+              child: Text('Wycofaj zgłoszenie'),
+            ),
+            SizedBox(height: 8),
+            ElevatedButton(
+              onPressed: isButtonEnabled
+                  ? () {
+                // Zaktualizuj status na '3'
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => Coments()),
+                );
+              }
+                  : null, // Ustaw onPressed na null, jeśli przycisk ma być nieklikalny
+              child: Text('Komentarze'),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
+class ImageFullScreenPage extends StatelessWidget {
+  final String imageUrl;
+
+  const ImageFullScreenPage({required this.imageUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Pełny ekran'),
+      ),
+      body: Center(
+        child: GestureDetector(
+          onTap: () {
+            Navigator.pop(context);
+          },
+          child: CachedNetworkImage(
+            imageUrl: imageUrl,
+            fit: BoxFit.contain,
+            placeholder: (context, url) => CircularProgressIndicator(),
+            errorWidget: (context, url, error) => Icon(Icons.error),
+          ),
+        ),
+      ),
+    );
+  }
+}
+enum SortOption { date, category }
+class DisplayPage extends StatefulWidget {
+  @override
+  _DisplayPageState createState() => _DisplayPageState();
+}
+class _DisplayPageState extends State<DisplayPage> {
+  List<Zgloszenie> zgloszenia = [];
+  SortOption _sortOption = SortOption.date; // Domyślne sortowanie
+
+  @override
+  void initState() {
+    super.initState();
+    fetchData();
+  }
+
+  Future<void> fetchData() async {
+    final queryBuilder = QueryBuilder<ParseObject>(ParseObject('Zgloszenie'));
+
+    final response = await queryBuilder.query();
+
+    final items = response.results?.map<Zgloszenie>((result) {
+      final id = result.objectId!;
+      final nazwa = result.get<String>('Kategoria')!;
+      final opis = result.get<String>('Opis')!;
+      final date = result.get<DateTime>('createdAt')!;
+      final status = result.get<String>('Status')!;
+      final file = result.get<dynamic>('file'); // Zmieniono typ na dynamic
+
+      dynamic imageUrl;
+      if (file is ParseWebFile) {
+        imageUrl = file.url;
+      } else if (file is ParseFile) {
+        imageUrl = file.url!;
+      } else {
+        imageUrl = '';
+      }
+
+      return Zgloszenie(
+        id: id,
+        nazwa: nazwa,
+        opis: opis,
+        status: status,
+        date: date,
+        imageUrl: imageUrl,
+      );
+    }).toList();
+
+    setState(() {
+      zgloszenia = items!;
+    });
+  }
+
+  void sortList(SortOption option) {
+    setState(() {
+      _sortOption = option;
+      switch (option) {
+        case SortOption.date:
+          zgloszenia.sort((a, b) => a.date.compareTo(b.date));
+          break;
+        case SortOption.category:
+          zgloszenia.sort((a, b) => a.nazwa.compareTo(b.nazwa));
+          break;
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Zgłoszenia'),
+      ),
+      body: Column(
+        children: [
+          DropdownButton<SortOption>(
+            value: _sortOption,
+            onChanged: (SortOption? newValue) {
+              if (newValue != null) {
+                sortList(newValue);
+              }
+            },
+            items: [
+              DropdownMenuItem(
+                value: SortOption.date,
+                child: Text('Sortuj po dacie'),
+              ),
+              DropdownMenuItem(
+                value: SortOption.category,
+                child: Text('Sortuj alfabetycznie po kategorii'),
+              ),
+            ],
+          ),
+          Expanded(
+            child: ListView.builder(
+              itemCount: zgloszenia.length,
+              itemBuilder: (context, index) {
+                final zgloszenie = zgloszenia[index];
+                return ZgloszenieListItem(zgloszenie: zgloszenie);
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class Message {
+  static void showSuccess(
+      {required BuildContext context,
+        required String message,
+        VoidCallback? onPressed}) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text("Success!"),
+          content: Text(message),
+          actions: <Widget>[
+            new ElevatedButton(
+              child: const Text("OK"),
+              onPressed: () {
+                Navigator.of(context).pop();
+                if (onPressed != null) {
+                  onPressed();
+                }
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  static void showError(
+      {required BuildContext context,
+        required String message,
+        VoidCallback? onPressed}) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text("Error!"),
+          content: Text(message),
+          actions: <Widget>[
+            new ElevatedButton(
+              child: const Text("OK"),
+              onPressed: () {
+                Navigator.of(context).pop();
+                if (onPressed != null) {
+                  onPressed();
+                }
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
