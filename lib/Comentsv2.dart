@@ -94,14 +94,13 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> sendMessage(String text) async {
-    final currentUser = UserData().currentU;
     final newMessage = ParseObject('Message')
       ..set('text', text)
-      ..set('senderId', 'user_id')
-      ..set('receiverId', 'admin_id')
-      ..set('currentUser', currentUser)
+      ..set('senderId', 'admin_id')
+      ..set('receiverId', 'user_id')
       ..set('idZgloszenia', widget.objectId)
-      ..set('isRead', '1'); // Status ustawiony na '1' (nieprzeczytana)
+      ..set('isRead', '1') // Status ustawiony na '1' (nieprzeczytana)
+      ..set('currentUser', 'wartosc_currentUser'); // Dodanie wartości currentUser
 
     try {
       await newMessage.save();

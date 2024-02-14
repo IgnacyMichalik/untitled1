@@ -7,9 +7,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:parse_server_sdk/parse_server_sdk.dart';
+import 'package:intl/intl.dart';
 import 'MapScreen.dart';
 import 'Coments.dart';
+import 'InfoMap.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:parse_server_sdk_flutter/parse_server_sdk_flutter.dart';
 
 
 
@@ -19,37 +22,58 @@ void main() async {
   final keyApplicationId = 'uq3mIDo6JrLvcUXVIr8PUU56gTXbMFtqM2kuPPga';
   final keyClientKey = 'jcYVbSnDf2phLSJJV4RYMb3LgU2t84KUb6vOV0Ge';
   final keyParseServerUrl = 'https://parseapi.back4app.com';
+  final keyLiveQueryUrl = 'https://testdatabaseimapsl.b4a.io';
 
-  await Parse().initialize(keyApplicationId, keyParseServerUrl,
-      clientKey: keyClientKey, debug: true);
+
+
+  await Parse().initialize(
+    keyApplicationId,
+    keyParseServerUrl,
+    clientKey: keyClientKey,
+    autoSendSessionId: true,
+    debug: true,
+    liveQueryUrl: keyLiveQueryUrl, // Ustawienie liveQueryUrl
+  );
+
 
   runApp(MaterialApp(
     title: 'Naprawmy sobie miasto',
-   debugShowCheckedModeBanner: false,
+    debugShowCheckedModeBanner: false,
     home: MyApp(),
   ));
 }
 
 class MyApp extends StatelessWidget {
+
+
+
   Future<bool> hasUserLogged() async {
     ParseUser? currentUser = await ParseUser.currentUser() as ParseUser?;
     if (currentUser == null) {
       return false;
     }
+    String? objectId = currentUser.objectId;
+    if (objectId != null) {
+      // Przypisz wartość do UserData().currentU
+      UserData().currentU = objectId;
+    }
+
     //Checks whether the user's session token is valid
     final ParseResponse? parseResponse =
     await ParseUser.getCurrentUserFromServer(currentUser.sessionToken!);
 
     if (parseResponse?.success == null || !parseResponse!.success) {
-      //Invalid session. Logout
       await currentUser.logout();
       return false;
     } else {
+
       return true;
+
     }
   }
 
   @override
+
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Naprawmy sobie miasto',
@@ -81,7 +105,84 @@ class MyApp extends StatelessWidget {
     );
   }
 }
-class LoginPage extends StatefulWidget {
+
+class UserData {
+  static final UserData _singleton = UserData._internal();
+  factory UserData() => _singleton;
+  UserData._internal();
+  String currentU = '';
+}
+class ReadData {
+  static final ReadData _singleton = ReadData._internal();
+  factory ReadData() => _singleton;
+  ReadData._internal();
+
+  static final ReadData _readInstance = ReadData._internal();
+  factory ReadData.instance() => _readInstance;
+
+  String ReadU = 'hej';
+
+}
+class KomData {
+  static final KomData _singleton = KomData._internal();
+  factory KomData() => _singleton;
+  KomData._internal();
+  String KomId = '';
+}
+
+class YourClass {
+  late LiveQuery liveQuery;
+  late String currentUserValue;
+  late QueryBuilder<ParseObject> query;
+
+  Future<void> initializeLiveQuery() async {
+    print('Wywołanie 1');
+    // Inicjalizacja SDK Parse
+    await Parse().initialize(
+      'uq3mIDo6JrLvcUXVIr8PUU56gTXbMFtqM2kuPPga',
+      'https://parseapi.back4app.com',
+      clientKey: 'jcYVbSnDf2phLSJJV4RYMb3LgU2t84KUb6vOV0Ge',
+      autoSendSessionId: true,
+      liveQueryUrl: 'https://testdatabaseimapsl.b4a.io',
+      debug: true,
+    );
+    print('Wywołanie 2');
+    // Pobranie wartości currentUserValue po zainicjalizowaniu
+    currentUserValue = UserData().currentU;
+
+    // Inicjalizacja LiveQuery
+    liveQuery = LiveQuery();
+
+    // Inicjalizacja zapytania LiveQuery
+    query = QueryBuilder<ParseObject>(ParseObject('Message'))
+      ..whereEqualTo('isRead', 0); // Sprawdzenie czy isRead wynosi 0
+
+    // Uruchomienie subskrypcji LiveQuery
+    startLiveQuery();
+  }
+
+  void startLiveQuery() async {
+    print('Wywołanie 3');
+    try {
+      // Inicjalizacja subskrypcji LiveQuery
+      Subscription subscription = await liveQuery.client.subscribe(query);
+
+      // Nasłuchiwanie na zdarzenia LiveQuery (np. aktualizacje)
+      subscription.on(LiveQueryEvent.update, (value) {
+        print('*** UPDATE ***: ${DateTime.now().toString()}\n $value ');
+        print((value as ParseObject).objectId);
+        print((value as ParseObject).updatedAt);
+        print((value as ParseObject).createdAt);
+        print((value as ParseObject).get('objectId'));
+        print((value as ParseObject).get('updatedAt'));
+        print((value as ParseObject).get('createdAt'));
+        print('Wywołanie 4');
+      });
+    } catch (e) {
+      print('Błąd podczas subskrybowania LiveQuery: $e');
+    }
+  }
+}class LoginPage extends StatefulWidget {
   @override
   _LoginPageState createState() => _LoginPageState();
 }
@@ -96,7 +197,7 @@ class _LoginPageState extends State<LoginPage> {
 
     return Scaffold(
         appBar: AppBar(
-
+          backgroundColor: Colors.lightGreen,
           title: const Text('Naprawmy sobie miasto'),
         ),
         body: Center(
@@ -162,6 +263,8 @@ class _LoginPageState extends State<LoginPage> {
           ),
         ));
   }
+  String? currentUser; // Deklaracja zmiennej currentUser
+
 
   void doUserLogin() async {
     final username = controllerUsername.text.trim();
@@ -172,6 +275,8 @@ class _LoginPageState extends State<LoginPage> {
     var response = await user.login();
 
     if (response.success) {
+      final objectId = response.result['objectId'];
+      UserData().currentU = objectId; // Aktualizacja wartości w singletonie
       navigateToUser();
     } else {
       Message.showError(context: context, message: response.error!.message);
@@ -195,27 +300,175 @@ class _LoginPageState extends State<LoginPage> {
 
 
 }
-class UserPage extends StatelessWidget {
+
+class UserPage extends StatefulWidget {
+  @override
+  _UserPageState createState() => _UserPageState();
+}
+
+
+class _UserPageState extends State<UserPage> {
+  void runLiveQuery() {
+    YourClass yourClass = YourClass();
+    yourClass.initializeLiveQuery();
+
+  }
+
+
+  bool isNewMessage = false;
   ParseUser? currentUser;
   PickedFile? pickedFile;
-
+  bool shouldShowDot = false;
   List<ParseObject> results = <ParseObject>[];
   double selectedDistance = 3000;
-
-
   Future<ParseUser?> getUser() async {
     currentUser = await ParseUser.currentUser() as ParseUser?;
     return currentUser;
   }
 
   @override
+  void initState() {
+    super.initState();
+    runLiveQuery();
+    checkForUnreadMessages();
+  }
+  Future<void> checkForUnreadMessages() async {
+    final queryBuilder = QueryBuilder<ParseObject>(ParseObject('Message'))
+      ..whereEqualTo('isRead', '0');
+
+    try {
+      final response = await queryBuilder.query();
+      final results = response.results;
+
+      if (results != null && results.isNotEmpty) {
+        setState(() {
+          shouldShowDot = true; // Ust
+          runLiveQueryv2();// awienie flagi na true, gdy są nieprzeczytane wiadomości
+        });
+      }
+    } catch (e) {
+      print('Error checking for unread messages: $e');
+    }
+  }
+  Future<void> runLiveQueryv2() async {
+    final queryBuilder = QueryBuilder<ParseObject>(ParseObject('Message'))
+      ..whereEqualTo('isRead', '0');
+
+    final subscription = await LiveQuery().client.subscribe(queryBuilder);
+    subscription.on(LiveQueryEvent.create, (value) {
+      if (value['isRead'] == '0') {
+        setState(() {
+          shouldShowDot = true;
+        });
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (BuildContext context) => UserPage()),
+        );
+      }
+    });
+
+    subscription.on(LiveQueryEvent.update, (value) {
+      if (value['isRead'] == '0') {
+        setState(() {
+          shouldShowDot = true;
+        });
+        // Tutaj możesz umieścić dodatkową logikę, która powinna zostać wykonana przy zmianie danych
+        // np. odświeżenie strony, aktualizacja widoku, itp.
+      }
+    });
+  }
+  void _showDetailsDialog(BuildContext context, List<Widget> messageWidgets, List<String> idsZgloszenia) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Powiadomienia'),
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: List.generate(
+              messageWidgets.length,
+                  (index) => GestureDetector(
+                onTap: () {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ChatScreen(objectId: idsZgloszenia[index]),
+                    ),
+                  );
+                },
+                child: messageWidgets[index],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(); // Close the dialog
+              },
+              child: Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> showNewMessagesList(BuildContext context) async {
+    final queryBuilder = QueryBuilder<ParseObject>(ParseObject('Message'))
+      ..whereEqualTo('isRead', '0');
+
+    try {
+      final response = await queryBuilder.query();
+      final messages = response.results;
+
+      List<Widget> messageWidgets = [];
+      List<String> idsZgloszenia = [];
+
+      for (var message in messages!) {
+        final idZgloszenia = message['idZgloszenia'];
+
+        if (idZgloszenia != null) {
+          final zgloszenieQuery = QueryBuilder<ParseObject>(ParseObject('Zgloszenie'))
+            ..whereEqualTo('objectId', idZgloszenia);
+
+          final zgloszenieResponse = await zgloszenieQuery.query();
+          final zgloszenia = zgloszenieResponse.results;
+
+          if (zgloszenia != null && zgloszenia.isNotEmpty) {
+            final kategoria = zgloszenia.first['Kategoria'];
+            final opis = zgloszenia.first['Opis'];
+
+            messageWidgets.add(_buildMessageWidget(kategoria, opis));
+            idsZgloszenia.add(idZgloszenia);
+          }
+        }
+      }
+
+      _showDetailsDialog(context, messageWidgets, idsZgloszenia);
+    } catch (e) {
+      print('Error retrieving new message details: $e');
+    }
+  }
+  Widget _buildMessageWidget(String kategoria, String opis) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Kategoria: $kategoria'),
+        Text('Opis: $opis'),
+        Divider(), // Add a divider between messages
+      ],
+    );
+  }
+  @override
   Widget build(BuildContext context) {
+
     void doUserLogout() async {
       var response = await currentUser!.logout();
       if (response.success) {
         Message.showSuccess(
             context: context,
-            message: 'User was successfully logout!',
+            message: 'Użytkowanik został pomyślnie wylogowany!',
             onPressed: () {
               Navigator.pushAndRemoveUntil(
                 context,
@@ -227,93 +480,154 @@ class UserPage extends StatelessWidget {
         Message.showError(context: context, message: response.error!.message);
       }
     }
+    return WillPopScope(
+        onWillPop: () async {
+          SystemNavigator.pop(); // Zamknięcie aplikacji po naciśnięciu przycisku cofania
+          return true;
+        },
+        child: Scaffold(
 
-    return Scaffold(
-        appBar: AppBar(
-
-        ),
-        body: FutureBuilder<ParseUser?>(
-            future: getUser(),
-            builder: (context, snapshot) {
-              switch (snapshot.connectionState) {
-                case ConnectionState.none:
-                case ConnectionState.waiting:
-                  return Center(
-                    child: Container(
-                        width: 100,
-                        height: 100,
-                        child: CircularProgressIndicator()),
-                  );
-                default:
-                  return Scaffold(
-                      body: Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            SizedBox(
-                              height: 20,
+            appBar: AppBar(
+              backgroundColor: Colors.lightGreen,
+              title: Text('Naprawmy sobie miasto'),
+              automaticallyImplyLeading: false,
+              actions: [
+                IconButton(
+                  icon: Stack(
+                    children: [
+                      Icon(Icons.notifications), // Notification bell icon
+                      if (shouldShowDot) // Display red dot if there's an unread message
+                        Positioned(
+                          top: 5.0,
+                          left: 5.0,
+                          child: Container(
+                            width: 10.0,
+                            height: 10.0,
+                            decoration: BoxDecoration(
+                              color: Colors.red,
+                              shape: BoxShape.circle,
                             ),
-
-                            Container(
-                              height: 200,
-                              child: Image.network(
-                                  'https://upload.wikimedia.org/wikipedia/commons/c/c8/POL_S%C5%82upsk_herb_S%C5%82upska.jpg'),
-                            ),
-                            SizedBox(
-                              height: 16,
-                            ),
-                            Center(
-
-                            ),
-                            SizedBox(
-                              height: 16,
-                            ),
-                            Container(
-                              height: 50,
-                              child: ElevatedButton(
-                                child: Text('Dodaj zgłoszenie'),
-                                style: ElevatedButton.styleFrom(),
-                                onPressed: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(builder: (context) => SavePage()),
-                                  );
-                                },
-                              ),
-                            ),
-                            SizedBox(
-                              height: 8,
-                            ),
-                            Container(
-                                height: 50,
-                                child: ElevatedButton(
-                                  child: Text('Przesłane zgłoszenia'),
-                                  onPressed: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(builder: (context) => DisplayPage()),
-                                    );
-                                  },
-                                )),
-                            SizedBox(
-                              height: 8,
-                            ),
-                            Container(
-                              height: 50,
-                              child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(backgroundColor: Colors.grey),
-                                child: const Text('Wyloguj'),
-                                onPressed: () => doUserLogout(),
-                              ),
-                            )],
+                          ),
                         ),
-                      ));
-              }
-            }));
+                    ],
+                  ),
+                  onPressed: () {
+                    showNewMessagesList(context);
+                  },
+                ),
+              ],
+            ),
+            body: FutureBuilder<ParseUser?>(
+                future: getUser(),
+                builder: (context, snapshot) {
+                  switch (snapshot.connectionState) {
+                    case ConnectionState.none:
+                    case ConnectionState.waiting:
+                      return Center(
+                        child: Container(
+                            width: 100,
+                            height: 100,
+                            child: CircularProgressIndicator()),
+                      );
+                    default:
+                      return Scaffold(
+                          body: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                SizedBox(
+                                  height: 20,
+                                ),
+
+                                Container(
+                                  height: 200,
+                                  child: Image.asset('lib/images/herb.png'),
+                                ),
+                                SizedBox(
+                                  height: 16,
+                                ),
+                                Center(
+
+                                ),
+                                SizedBox(
+                                  height: 16,
+                                ),
+                                Container(
+                                  height: 50,
+                                  child: ElevatedButton(
+                                    child: Text('Dodaj zgłoszenie'),
+                                    style: ElevatedButton.styleFrom(
+                                      primary: Colors.lightGreen, // Kolor tła przycisku
+                                      onPrimary: Colors.black, // Kolor tekstu na przycisku
+                                      // Inne opcje stylizacji, takie jak padding, shape, etc.
+                                    ),
+                                    onPressed: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(builder: (context) => SavePage(location: null,)),
+                                      );
+                                    },
+
+                                  ),
+                                ),
+                                SizedBox(
+                                  height: 8,
+                                ),
+                                Container(
+                                    height: 50,
+                                    child: ElevatedButton(
+                                      child: Text('Przesłane zgłoszenia'),
+                                      style: ElevatedButton.styleFrom(
+                                        primary: Colors.lightGreen, // Kolor tła przycisku
+                                        onPrimary: Colors.black, // Kolor tekstu na przycisku
+                                        // Inne opcje stylizacji, takie jak padding, shape, etc.
+                                      ),
+                                      onPressed: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(builder: (context) => DisplayPage()),
+                                        );
+                                      },
+                                    )),
+                                SizedBox(
+                                  height: 8,
+                                ),
+
+                                Container(
+                                    height: 50,
+                                    child: ElevatedButton(
+                                      child: Text('Mapa zgłoszeń'),
+                                      style: ElevatedButton.styleFrom(
+                                        primary: Colors.lightGreen, // Kolor tła przycisku
+                                        onPrimary: Colors.black, // Kolor tekstu na przycisku
+                                        // Inne opcje stylizacji, takie jak padding, shape, etc.
+                                      ),
+                                      onPressed: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(builder: (context) => MapScreenv2()),
+                                        );
+                                      },
+                                    )),
+                                SizedBox(
+                                  height: 8,
+                                ),
+
+                                Container(
+                                  height: 50,
+                                  child: ElevatedButton(
+                                    style: ElevatedButton.styleFrom(backgroundColor: Colors.grey),
+                                    child: const Text('Wyloguj'),
+                                    onPressed: () => doUserLogout(),
+                                  ),
+                                )],
+                            ),
+                          ));
+                  }
+                })));
   }
 }
-
 class SignUpPage extends StatefulWidget {
   @override
   _SignUpPageState createState() => _SignUpPageState();
@@ -328,6 +642,7 @@ class _SignUpPageState extends State<SignUpPage> {
   Widget build(BuildContext context) {
     return Scaffold(
         appBar: AppBar(
+          backgroundColor: Colors.lightGreen,
           title: const Text('Rejestracja'),
         ),
         body: Center(
@@ -390,6 +705,11 @@ class _SignUpPageState extends State<SignUpPage> {
                   height: 50,
                   child: ElevatedButton(
                     child: const Text('Załóż konto'),
+                    style: ElevatedButton.styleFrom(
+                      primary: Colors.lightGreen, // Kolor tła przycisku
+                      onPrimary: Colors.black, // Kolor tekstu na przycisku
+                      // Inne opcje stylizacji, takie jak padding, shape, etc.
+                    ),
                     onPressed: () => doUserRegistration(),
                   ),
                 )
@@ -425,49 +745,46 @@ class _SignUpPageState extends State<SignUpPage> {
   }
 }
 
-
-
 class SavePage extends StatefulWidget {
+  final LatLng? location;
+  final String? status; // Dodany status
+  const SavePage({Key? key, required this.location, this.status}) : super(key: key);
+
   @override
   _SavePageState createState() => _SavePageState();
 }
 
 class _SavePageState extends State<SavePage> {
-
-
   final Opis = TextEditingController();
-
-
-  void send() async {
-    final Descriptrion = Opis.text.trim();
-
-    final Dane = ParseObject("Zgloszenie")
-      ..set("Opis", Descriptrion)..set("Kategoria", selectedItem)..set("Status", status)..set('file', parseFile);
-    await Dane.save();
-
-  }
-
-  //Zdjęcia!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
   String? status;
-
   PickedFile? pickedFile;
-
-  var zmienna = 0;
-
-  Future state() async {
-    zmienna = zmienna + 1;
-  }
-
-
-//Lista
-
-
-  String? selectedItem;
+  var zmienna = '';
   List<String> items = [];
+  String? selectedItem;
+  String statusText = '';
+  bool isLocationSelected = false;
+  bool isDescriptionAdded = false;
+
+
+
+  @override
   void initState() {
     super.initState();
     fetchDataFromBack4App();
+    status = widget.status; // Ustawienie statusu na podstawie przekazanego wartością początkową
+    setStatusText(); // Ustawienie tekstu statusu
+  }
+  void setStatusText() {
+    // Ustawienie tekstu odpowiadającego statusowi
+    if (status == '1') {
+      setState(() {
+        statusText = 'Lokalizacja została poprawnie określona';
+      });
+    } else {
+      setState(() {
+        statusText = 'Lokalizacja nie została jeszcze wybrana';
+      });
+    }
   }
 
   Future<void> fetchDataFromBack4App() async {
@@ -496,6 +813,9 @@ class _SavePageState extends State<SavePage> {
       print('Error initializing Parse: $e');
     }
   }
+  Future state() async {
+    zmienna;
+  }
 
 
 
@@ -505,219 +825,273 @@ class _SavePageState extends State<SavePage> {
   List<ParseObject> results = <ParseObject>[];
   double selectedDistance = 3000;
 
+  String currentUserValue = UserData().currentU;
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    LatLng? receivedLocation = widget.location;
+    double latitude = receivedLocation?.latitude ?? 0.0;
+    double longitude = receivedLocation?.longitude ?? 0.0;
+    void send() async {
+      final Descriptrion = Opis.text.trim();
 
+      final Dane = ParseObject("Zgloszenie")
+        ..set("Opis", Descriptrion)
+        ..set("Kategoria", selectedItem)
+        ..set("Status", status)
+        ..set('file', parseFile)
+        ..set("latitude", latitude)
+        ..set("longitude", longitude)
+        ..set("currentUser", currentUserValue); // Zapisz currentUser do kolumny 'currentUser'
+
+      try {
+        await Dane.save();
+        print('saved successfully ');
+        // Dodatkowe operacje po zapisaniu danych lokalizacji
+      } catch (e) {
+        print('Error $e');
+      }
+    }
+    return WillPopScope(
+      onWillPop: () async {
+        // Przejście do UserPage po naciśnięciu przycisku cofania
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => UserPage()),
+        );
+        return false; // Blokowanie domyślnego działania przycisku cofania
+      },
+      child: Scaffold(
         appBar: AppBar(
+          backgroundColor: Colors.lightGreen,
           title: Text("Przesłane zgłoszenia"),
+          automaticallyImplyLeading: false,
         ),
-
-
-        body: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-
-              SizedBox(
-                height: 16,
+        body: ListView(
+          padding: EdgeInsets.all(16.0),
+          children: [
+            SizedBox(height: 16),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                primary: Colors.lightGreen, // Kolor tła przycisku
+                onPrimary: Colors.black, // Kolor tekstu na przycisku
+                // Inne opcje stylizacji, takie jak padding, shape, etc.
               ),
-
-              //Mapa
-              ElevatedButton(
-                child: Text('Wybierz lokalizacje'),
-                style: ElevatedButton.styleFrom(),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => MapScreen()),
-                  );
-                },
-              ),
-
-
-              SizedBox(
-                height: 16,
-              ),
-              //Zdjęcia
-
-
-              SizedBox(
-                height: 16,
-              ),
-              Column(
-                children: [
-                  GestureDetector(
-                    child: pickedFile != null
-                        ? Container(
-                        width: 250,
-                        height: 250,
-                        decoration:
-                        BoxDecoration(border: Border.all(color: Colors.blue)),
-                        child: kIsWeb
-                            ? Image.network(pickedFile!.path)
-                            : Image.file(File(pickedFile!.path)))
-                        : Container(
-                      width: 150,
-                      height: 150,
-                      decoration:
-                      BoxDecoration(border: Border.all(color: Colors.blue)),
-                      child: Center(
-                        child: Text('Dodaj zdjęcie'),
-                      ),
-                    ),
-                    onTap: () async {
-
-
-                      /*  await  showDialog(context: context, builder: (context)=> AlertDialog(
-                            title: Text("Dodawanie zdjęcia"),
-                            actions: [
-                              ElevatedButton(onPressed:() async{pickImageC();
-                                Navigator.pop(context);},
-                                  child: Text('    Zrób zdjęice     ')),
-                              ElevatedButton(onPressed: () async{pickImage();Navigator.pop(context);
-
-                                }, child: Text('Zdjęcie z galerii'))
-                            ],
-
-                          ));
-*/
-
-                      await showDialog(context: context, builder: (context) =>
-                          AlertDialog(
-                            title: Text("Dodawanie zdjęcia"),
-                            actions: [
-                              ElevatedButton(onPressed: () async {
-                                state();
-                                Navigator.pop(context);
-                              }, child: Text('Zrób zdjęcie')),
-
-                              ElevatedButton(
-                                  onPressed: () => Navigator.pop(context)
-                                  , child: Text('Zdjęcie z galerii'))
-                            ],
-
-                          ));
-
-                      if (zmienna == 1) {
-                        XFile? image =
-                        await ImagePicker().pickImage(
-                            source: ImageSource.camera);
-                        zmienna = zmienna - 1;
-                        if (image != null) {
-                          setState(() {
-                            pickedFile = image as PickedFile?;
-                          });
-                        }
-                      } else if (zmienna == 0) {
-                        XFile? image =
-                        await ImagePicker().pickImage(
-                            source: ImageSource.gallery);
-
-                        if (image != null) {
-                          setState(() {
-                            pickedFile = image as PickedFile?;
-                          });
-                        }
-                      }
-                    },
-
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => MapScreen()),
+                );
+              },
+              child: Text('Podaj lokalizację'),
+            ),
+            SizedBox(height: 16),
+            Visibility(
+              visible: (latitude != null && latitude != 0) && (longitude != null && longitude != 0),
+              child: Text('Lokalizacja została poprawnie określona'),
+            ),
+            Visibility(
+              visible: (latitude == null || latitude == 0) || (longitude == null || longitude == 0),
+              child: Text('Lokalizacja nie została jeszcze wybrana'),
+            ),
+            SizedBox(height: 16),
+            Column(
+              children: [
+                GestureDetector(
+                  child: pickedFile != null
+                      ? Container(
+                    width: 250,
+                    height: 250,
+                    decoration: BoxDecoration(border: Border.all(color: Colors.red)),
+                    child: kIsWeb
+                        ? Image.network(pickedFile!.path, fit: BoxFit.contain)
+                        : Image.file(File(pickedFile!.path), fit: BoxFit.contain),
                   )
-                ],
+                      : Container(
+                    width: 150,
+                    height: 150,
+                    decoration: BoxDecoration(border: Border.all(color: Colors.blue)),
+                    child: Center(
+                      child: Text('Dodaj zdjęcie'),
+                    ),
+                  ),
+                  onTap: () async {
+                    if (latitude != null && latitude != 0 && longitude != null && longitude != 0) {
+                      String? buttonPressed = await showDialog<String>(
+                        context: context,
+                        builder: (context) {
+                          String? selectedButton;
+                          return WillPopScope(
+                            onWillPop: () async {
+                              Navigator.pop(context, selectedButton);
+                              return false;
+                            },
+                            child: AlertDialog(
+                              title: Text("Dodawanie zdjęcia"),
+                              content: Column( // Use Column for vertical arrangement
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                      primary: Colors.lightGreen, // Kolor tła przycisku
+                                      onPrimary: Colors.black, // Kolor tekstu na przycisku
+                                      // Inne opcje stylizacji, takie jak padding, shape, etc.
+                                    ),
+                                    onPressed: () async {
+                                      final imagePicker = ImagePicker();
+                                      final PickedFile? image =
+                                      await imagePicker.getImage(source: ImageSource.camera);
+                                      if (image != null) {
+                                        setState(() {
+                                          pickedFile = image;
+                                        });
+                                      }
+                                      selectedButton = 'Dodawanie';
+                                      Navigator.pop(context);
+                                    },
+                                    child: Text('Zrób zdjęcie'),
+                                  ),
+                                  SizedBox(height: 8), // Add space between buttons
+                                  ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                      primary: Colors.lightGreen, // Kolor tła przycisku
+                                      onPrimary: Colors.black, // Kolor tekstu na przycisku
+                                      // Inne opcje stylizacji, takie jak padding, shape, etc.
+                                    ),
+                                    onPressed: () async {
+                                      final imagePicker = ImagePicker();
+                                      final PickedFile? image =
+                                      await imagePicker.getImage(source: ImageSource.gallery);
+                                      if (image != null) {
+                                        setState(() {
+                                          pickedFile = image;
+                                        });
+                                      }
+                                      selectedButton = 'Zrob';
+                                      Navigator.pop(context);
+                                    },
+                                    child: Text('Zdjęcie z galerii'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Najpierw wskaż lokalizację'),
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    }
+                  },
 
-              ),
 
-
-              SizedBox(
-                height: 16,
-              ),
-
-              Container(
-                width: 240,
-                height: 50,
-                child: DropdownButtonFormField<String>(
-                  value: selectedItem,
-                  items: items.map((item) {
+                )],
+            ),
+            SizedBox(height: 16),
+            Container(
+              width: 240,
+              height: 50,
+              child: DropdownButtonFormField<String>(
+                value: selectedItem,
+                items: [
+                  if (selectedItem == null) // Sprawdzenie, czy wartość jest null
+                    DropdownMenuItem<String>(
+                      value: null,
+                      child: Text('Wybierz kategorię zdarzenia'), // Tekst dla hinta
+                    ),
+                  ...items.map((item) {
                     return DropdownMenuItem<String>(
                       value: item,
                       child: Text(item),
                     );
                   }).toList(),
-                  onChanged: (String? newValue) {
-                    setState(() {
-                      selectedItem = newValue;
-                    });
-                  },
+                ],
+                onChanged: (String? newValue) {
+                  setState(() {
+                    selectedItem = newValue;
+                  });
+                },
+              ),
+            ),
+
+
+            Container(
+              height: 100, // Ustaw wysokość kontenera TextFormField na 100 pikseli
+              child: TextFormField(
+                textAlignVertical: TextAlignVertical.center, // Wyśrodkuj tekst pionowo
+                controller: Opis,
+                onChanged: (value) {
+                  setState(() {
+                    isDescriptionAdded = value.isNotEmpty;
+                  });
+                },
+                decoration: InputDecoration(
+                  hintText: "Dodaj opis zgłoszenia",
                 ),
+                maxLines: null, // Zawijaj tekst automatycznie
+                maxLength: 150, // Limit znaków do 300
               ),
+            ),
 
-              SizedBox(
-                height: 16,
-              ),
-              Container(
-                height: 50,
-                child: (
-                    TextFormField(
-
-                      textAlign: TextAlign.center,
-                      controller: Opis,
-                      decoration: InputDecoration(
-                          hintText: "Dodaj opis zgłoszenia"
-                      ),
-                    )
+            SizedBox(height: 16),
+            Container(
+              height: 50,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  primary: Colors.lightGreen, // Kolor tła przycisku
+                  onPrimary: Colors.black, // Kolor tekstu na przycisku
+                  // Inne opcje stylizacji, takie jak padding, shape, etc.
                 ),
+                child: Text('Wyślij zgłoszenie'),
+                onPressed: (pickedFile == null || selectedItem == null || selectedItem == 'Wybierz kategorię zdarzenia')
+                    ? null
+                    : () async {
+                  setState(() {
+                    isLoading = true;
+                  });
 
+                  if (kIsWeb) {
+                    parseFile = ParseWebFile(await pickedFile!.readAsBytes(), name: "image.jpg");
+                  } else {
+                    parseFile = ParseFile(File(pickedFile!.path));
+                  }
 
+                  status = '0';
+                  send();
+
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => UserPage()),
+                  );
+                },
               ),
 
 
-              SizedBox(
-                height: 16,
+            ),
+            SizedBox(height: 16),
+            Container(
+              height: 50,
+              child: ElevatedButton(
+
+                style: ElevatedButton.styleFrom(primary: Colors.grey),
+                child: Text('Anuluj'),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => UserPage()),
+                  );
+                },
               ),
-
-              Container(
-                height: 50,
-                child: (
-                    ElevatedButton(
-                      child: Text('Wyślij zgłoszenie'),
-                      style: ElevatedButton.styleFrom(primary: Colors.blue),
-
-                      onPressed: pickedFile == null ? null : () async {
-                        setState(() {
-                          isLoading = true;
-                        });
-
-                        if (kIsWeb) {
-                          parseFile =
-                              ParseWebFile(await pickedFile!.readAsBytes(),
-                                  name: "image.jpg");
-                        } else {
-                          parseFile = ParseFile(File(pickedFile!.path));
-                        }
-
-                        status='0';
-                        send();
-
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (context) => UserPage()),
-                        );
-
-                      },
-
-                    )
-
-                ),
-
-              ),
-            ],
-          ),
-        ));
+            ),
+          ],
+        ),
+      )
+      ,);
   }
-
 }
-
 class Zgloszenie {
   final String id;
   final String nazwa;
@@ -748,7 +1122,6 @@ class Zgloszenie {
     }
   }
 }
-
 class ZgloszenieListItem extends StatelessWidget {
   final Zgloszenie zgloszenie;
 
@@ -757,14 +1130,15 @@ class ZgloszenieListItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     Color statusColor = Colors.transparent;
+    late String statusImage;
     if (zgloszenie.status == '0') {
-      statusColor = Colors.yellow;
+      statusImage = 'lib/images/0.png'; // Przykładowa ścieżka do obrazka dla statusu '0'
     } else if (zgloszenie.status == '1') {
-      statusColor = Colors.green;
+      statusImage = 'lib/images/1.png'; // Przykładowa ścieżka do obrazka dla statusu '1'
     } else if (zgloszenie.status == '2') {
-      statusColor = Colors.red;
+      statusImage = 'lib/images/2.png'; // Przykładowa ścieżka do obrazka dla statusu '2'
     } else if (zgloszenie.status == '3') {
-      statusColor = Colors.black;
+      statusImage = 'lib/images/4.png'; // Przykładowa ścieżka do obrazka dla statusu '3'
     }
 
     return ListTile(
@@ -781,30 +1155,35 @@ class ZgloszenieListItem extends StatelessWidget {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-
           SizedBox(width: 10),
+          // Obrazek z animacją ładowania
           CachedNetworkImage(
             imageUrl: zgloszenie.imageUrl,
             fit: BoxFit.cover,
             width: 50,
             height: 50,
+            placeholder: (context, url) => CircularProgressIndicator(), // Animacja ładowania
+            errorWidget: (context, url, error) => Icon(Icons.error),
           ),
-          Container(
-            width: 50,
-            height: 50,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: statusColor,
-            ),
+          SizedBox(width: 10),
+          CircleAvatar(
+            backgroundImage: AssetImage(statusImage),
+            radius: 25,
           ),
         ],
       ),
     );
   }
 }
+
 class ZgloszenieDetailsPage extends StatelessWidget {
   final Zgloszenie zgloszenie;
   const ZgloszenieDetailsPage({required this.zgloszenie});
+
+  String formattedDate(DateTime date) {
+    return DateFormat('dd MMMM yyyy HH:mm').format(date.toLocal());
+    // 'dd' - dzień, 'MMMM' - miesiąc (pełna nazwa), 'yyyy' - rok, 'HH:mm' - godzina:minuta
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -822,6 +1201,7 @@ class ZgloszenieDetailsPage extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: Colors.lightGreen,
         title: Text('Szczegóły zgłoszenia'),
       ),
       body: Padding(
@@ -830,17 +1210,17 @@ class ZgloszenieDetailsPage extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Nazwa: ${zgloszenie.nazwa}',
+              'Kategoria zgłoszenia : ${zgloszenie.nazwa}',
               style: TextStyle(fontSize: 18),
             ),
             SizedBox(height: 8),
             Text(
-              'Opis: ${zgloszenie.opis}',
+              'Opis zgłoszenia: ${zgloszenie.opis}',
               style: TextStyle(fontSize: 16),
             ),
             SizedBox(height: 8),
             Text(
-              'Data: ${zgloszenie.date}',
+              'Data: ${formattedDate(zgloszenie.date)}',
               style: TextStyle(fontSize: 16),
             ),
             SizedBox(height: 8),
@@ -870,25 +1250,66 @@ class ZgloszenieDetailsPage extends StatelessWidget {
               ),
             ),
             ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                primary: Colors.lightGreen, // Kolor tła przycisku
+                onPrimary: Colors.black, // Kolor tekstu na przycisku
+                // Inne opcje stylizacji, takie jak padding, shape, etc.
+              ),
               onPressed: isButtonEnabled
                   ? () {
-                zgloszenie.updateStatus('3'); // Zaktualizuj status na '3'
-                Navigator.pop(context);
+                showDialog(
+                  context: context,
+                  builder: (BuildContext context) {
+                    return AlertDialog(
+                      title: Text('Potwierdzenie'),
+                      content: Text('Czy na pewno chcesz wycofać zgłoszenie?'),
+                      actions: [
+                        TextButton(
+                          onPressed: () {
+                            Navigator.of(context).pop(); // Zamknij okno dialogowe
+                          },
+                          child: Text('Nie'),
+                        ),
+                        TextButton(
+                          onPressed: () async {
+                            await zgloszenie.updateStatus('3'); // Zaktualizuj status na '3'
+                            Navigator.of(context).pop(); // Zamknij okno dialogowe
+
+                            // Navigate back to DisplayPage, replacing the current route
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => DisplayPage(),
+                              ),
+                            );
+                          },
+                          child: Text('Tak'),
+                        ),
+                      ],
+                    );
+                  },
+                );
               }
                   : null, // Ustaw onPressed na null, jeśli przycisk ma być nieklikalny
               child: Text('Wycofaj zgłoszenie'),
             ),
             SizedBox(height: 8),
             ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                primary: Colors.lightGreen, // Kolor tła przycisku
+                onPrimary: Colors.black, // Kolor tekstu na przycisku
+                // Inne opcje stylizacji, takie jak padding, shape, etc.
+              ),
               onPressed: isButtonEnabled
                   ? () {
-                // Zaktualizuj status na '3'
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => Coments()),
+                  MaterialPageRoute(
+                    builder: (context) => ChatScreen(objectId: zgloszenie.id),
+                  ),
                 );
               }
-                  : null, // Ustaw onPressed na null, jeśli przycisk ma być nieklikalny
+                  : null,
               child: Text('Komentarze'),
             )
           ],
@@ -908,6 +1329,7 @@ class ImageFullScreenPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: Colors.lightGreen,
         title: Text('Pełny ekran'),
       ),
       body: Center(
@@ -929,53 +1351,144 @@ class ImageFullScreenPage extends StatelessWidget {
 enum SortOption { date, category }
 class DisplayPage extends StatefulWidget {
   @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.lightGreen,
+        title: Text('Display Page'),
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back),
+          onPressed: () {
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(
+                builder: (context) => UserPage(),
+              ),
+            );
+          },
+        ),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.arrow_forward),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => UserPage(),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+
+  @override
   _DisplayPageState createState() => _DisplayPageState();
+
 }
+
 class _DisplayPageState extends State<DisplayPage> {
   List<Zgloszenie> zgloszenia = [];
-  SortOption _sortOption = SortOption.date; // Domyślne sortowanie
+  SortOption _sortOption = SortOption.date;
+  DateTime? lastFetchedAt;
+  Subscription? subscription;
 
   @override
   void initState() {
     super.initState();
-    fetchData();
+    fetchData(); // Fetch existing items
+    subscribeToLiveQuery(); // Subscribe to new items
   }
 
   Future<void> fetchData() async {
-    final queryBuilder = QueryBuilder<ParseObject>(ParseObject('Zgloszenie'));
+    try {
+      String currentUser = UserData().currentU;
+      final query = QueryBuilder<ParseObject>(ParseObject('Zgloszenie'))
+        ..whereEqualTo('currentUser', currentUser);
 
-    final response = await queryBuilder.query();
+      final response = await query.query();
 
-    final items = response.results?.map<Zgloszenie>((result) {
-      final id = result.objectId!;
-      final nazwa = result.get<String>('Kategoria')!;
-      final opis = result.get<String>('Opis')!;
-      final date = result.get<DateTime>('createdAt')!;
-      final status = result.get<String>('Status')!;
-      final file = result.get<dynamic>('file'); // Zmieniono typ na dynamic
+      final items = response.results?.map<Zgloszenie>((result) {
+        // Map fetched results to Zgloszenie objects
+        final id = result.objectId!;
+        final nazwa = result.get<String>('Kategoria')!;
+        final opis = result.get<String>('Opis')!;
+        final date = result.get<DateTime>('createdAt')!;
+        final status = result.get<String>('Status')!;
+        final file = result.get<dynamic>('file');
 
-      dynamic imageUrl;
-      if (file is ParseWebFile) {
-        imageUrl = file.url;
-      } else if (file is ParseFile) {
-        imageUrl = file.url!;
-      } else {
-        imageUrl = '';
+        dynamic imageUrl;
+        if (file is ParseWebFile) {
+          imageUrl = file.url;
+        } else if (file is ParseFile) {
+          imageUrl = file.url!;
+        } else {
+          imageUrl = '';
+        }
+
+        return Zgloszenie(
+          id: id,
+          nazwa: nazwa,
+          opis: opis,
+          status: status,
+          date: date,
+          imageUrl: imageUrl,
+        );
+      }).toList();
+
+      if (items != null && items.isNotEmpty) {
+        setState(() {
+          zgloszenia.addAll(items); // Add fetched items to the list
+        });
       }
+    } catch (e) {
+      print('Error fetching data: $e');
+    }
+  }
 
-      return Zgloszenie(
-        id: id,
-        nazwa: nazwa,
-        opis: opis,
-        status: status,
-        date: date,
-        imageUrl: imageUrl,
-      );
-    }).toList();
+  Future<void> subscribeToLiveQuery() async {
+    try {
+      String currentUserValue = UserData().currentU;
+      final LiveQuery liveQuery = LiveQuery();
+      final query = QueryBuilder<ParseObject>(ParseObject('Zgloszenie'))
+        ..whereEqualTo('currentUser', currentUserValue);
 
-    setState(() {
-      zgloszenia = items!;
-    });
+      subscription = await liveQuery.client.subscribe(query);
+      subscription?.on(LiveQueryEvent.create, (value) {
+        // Handle newly created items and add them to the list
+        final id = value.objectId!;
+        final nazwa = value.get<String>('Kategoria')!;
+        final opis = value.get<String>('Opis')!;
+        final date = value.get<DateTime>('createdAt')!;
+        final status = value.get<String>('Status')!;
+        final file = value.get<dynamic>('file');
+
+        dynamic imageUrl;
+        if (file is ParseWebFile) {
+          imageUrl = file.url;
+        } else if (file is ParseFile) {
+          imageUrl = file.url!;
+        } else {
+          imageUrl = '';
+        }
+
+        final zgloszenie = Zgloszenie(
+          id: id,
+          nazwa: nazwa,
+          opis: opis,
+          status: status,
+          date: date,
+          imageUrl: imageUrl,
+        );
+
+        setState(() {
+          zgloszenia.add(zgloszenie); // Add newly created items to the list
+        });
+      });
+    } catch (e) {
+      print('Error subscribing to LiveQuery: $e');
+    }
   }
 
   void sortList(SortOption option) {
@@ -992,47 +1505,59 @@ class _DisplayPageState extends State<DisplayPage> {
     });
   }
 
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Zgłoszenia'),
-      ),
-      body: Column(
-        children: [
-          DropdownButton<SortOption>(
-            value: _sortOption,
-            onChanged: (SortOption? newValue) {
-              if (newValue != null) {
-                sortList(newValue);
-              }
-            },
-            items: [
-              DropdownMenuItem(
-                value: SortOption.date,
-                child: Text('Sortuj po dacie'),
-              ),
-              DropdownMenuItem(
-                value: SortOption.category,
-                child: Text('Sortuj alfabetycznie po kategorii'),
-              ),
-            ],
+    return WillPopScope(
+      onWillPop: () async {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => UserPage(),
           ),
-          Expanded(
-            child: ListView.builder(
-              itemCount: zgloszenia.length,
-              itemBuilder: (context, index) {
-                final zgloszenie = zgloszenia[index];
-                return ZgloszenieListItem(zgloszenie: zgloszenie);
+        );
+        return false; // Zwracamy false, aby zablokować domyślną akcję przycisku cofania
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          backgroundColor: Colors.lightGreen,
+          title: Text('Zgłoszenie'),
+        ),
+        body: Column(
+          children: [
+            DropdownButton<SortOption>(
+              value: _sortOption,
+              onChanged: (SortOption? newValue) {
+                if (newValue != null) {
+                  sortList(newValue);
+                }
               },
+              items: [
+                DropdownMenuItem(
+                  value: SortOption.date,
+                  child: Text('Sortuj po dacie'),
+                ),
+                DropdownMenuItem(
+                  value: SortOption.category,
+                  child: Text('Sortuj alfabetycznie po kategorii'),
+                ),
+              ],
             ),
-          ),
-        ],
+            Expanded(
+              child: ListView.builder(
+                itemCount: zgloszenia.length,
+                itemBuilder: (context, index) {
+                  final zgloszenie = zgloszenia[index];
+                  return ZgloszenieListItem(zgloszenie: zgloszenie);
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
-
 class Message {
   static void showSuccess(
       {required BuildContext context,
@@ -1042,10 +1567,15 @@ class Message {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: const Text("Success!"),
+          title: const Text("Pomyślnie wylogowano"),
           content: Text(message),
           actions: <Widget>[
             new ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                primary: Colors.lightGreen, // Kolor tła przycisku
+                onPrimary: Colors.black, // Kolor tekstu na przycisku
+                // Inne opcje stylizacji, takie jak padding, shape, etc.
+              ),
               child: const Text("OK"),
               onPressed: () {
                 Navigator.of(context).pop();

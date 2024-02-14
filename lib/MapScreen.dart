@@ -2,16 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'main.dart';
-import 'package:parse_server_sdk/parse_server_sdk.dart';
-
-class LocationData {
-  double latitude;
-  double longitude;
-
-  LocationData({required this.latitude, required this.longitude});
-}
 
 class MapScreen extends StatefulWidget {
   @override
@@ -19,92 +10,31 @@ class MapScreen extends StatefulWidget {
 }
 
 class _MapScreenState extends State<MapScreen> {
-  LocationData? currentLocation;
-  late Position currentPosition;
+  LatLng? currentLocation;
   MapController mapController = MapController();
 
   @override
   void initState() {
     super.initState();
-    getLocationPermission();
-  }
-
-  Future<void> getLocationPermission() async {
-    // Check if location permissions are already granted
-    PermissionStatus status = await Permission.locationWhenInUse.status;
-    if (status.isGranted) {
-      // If permissions are granted, get the location
-      await getLocation();
-    } else {
-      // If permissions are not granted, request them from the user
-      PermissionStatus newStatus = await Permission.locationWhenInUse.request();
-      if (newStatus.isGranted) {
-        // If the user grants permissions, get the location
-        await getLocation();
-      }
-    }
-  }
-
-  Future<void> getLocation() async {
-    try {
-      currentPosition = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high);
-      setState(() {
-        currentLocation = LocationData(
-          latitude: currentPosition.latitude,
-          longitude: currentPosition.longitude,
-        );
-      });
-      mapController.move(
-        LatLng(
-          currentLocation!.latitude,
-          currentLocation!.longitude,
-        ),
-        13.0,
-      );
-    } catch (e) {
-      print('Error getting location: $e');
-    }
-  }
-
-  Future<void> saveLocation(LocationData locationData) async {
-    final ParseObject newLocation = ParseObject('Location')
-      ..set('latitude', locationData.latitude)
-      ..set('longitude', locationData.longitude);
-
-    try {
-      await newLocation.save();
-      print('Location saved successfully!');
-    } catch (e) {
-      print('Error saving location: $e');
-    }
+    _getLocation();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: Colors.lightGreen,
         title: Text('Map'),
       ),
       body: FlutterMap(
+        mapController: mapController,
         options: MapOptions(
-          center: LatLng(
-            currentLocation?.latitude ?? 0.0,
-            currentLocation?.longitude ?? 0.0,
-          ),
+          center: currentLocation ?? LatLng(0.0, 0.0),
           zoom: 13.0,
           onTap: (tapPosition, latLng) {
             setState(() {
-              currentLocation = LocationData(
-                latitude: latLng.latitude,
-                longitude: latLng.longitude,
-              );
+              currentLocation = latLng;
             });
-          },
-          onPositionChanged: (MapPosition position, bool hasGesture) {
-            if (hasGesture) {
-              currentLocation = null;
-            }
           },
         ),
         children: [
@@ -114,39 +44,56 @@ class _MapScreenState extends State<MapScreen> {
           ),
           MarkerLayer(
             markers: [
-              Marker(
-                width: 80.0,
-                height: 80.0,
-                point: LatLng(
-                  currentLocation?.latitude ?? 0.0,
-                  currentLocation?.longitude ?? 0.0,
-                ),
-                builder: (ctx) => Container(
-                  child: Icon(
-                    Icons.location_on,
-                    color: Colors.red,
+              if (currentLocation != null)
+                Marker(
+                  width: 80.0,
+                  height: 80.0,
+                  point: currentLocation!,
+                  builder: (ctx) => Container(
+                    child: Icon(
+                      Icons.location_on,
+                      color: Colors.blue,
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
         ],
-        mapController: mapController, // Set the mapController
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          if (currentLocation != null) {
-            saveLocation(currentLocation!);
-          } else {
-            print('Location data is null');
-          }
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => SavePage()),
-          );
+          _navigateToOtherScreen();
         },
-        child: Icon(Icons.save),
+        backgroundColor: Colors.lightGreen,
+        child: Icon(Icons.arrow_forward),
+
       ),
     );
+  }
+
+  Future<void> _getLocation() async {
+    try {
+      Position position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high);
+      setState(() {
+        currentLocation = LatLng(position.latitude, position.longitude);
+        mapController.move(currentLocation!, 13.0);
+      });
+    } catch (e) {
+      print('Error getting location: $e');
+    }
+  }
+
+  void _navigateToOtherScreen() {
+    if (currentLocation != null) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => SavePage(location: currentLocation!),
+        ),
+      );
+    } else {
+      print('Location not available');
+    }
   }
 }

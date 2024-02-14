@@ -29,17 +29,16 @@ environment:
 # versions available, run `flutter pub outdated`.
 dependencies:
   cached_network_image:  3.3.0
-  get: 4.6.6
   flutter_osm_plugin: 0.70.1
   latlong2: 0.8.2
   proj4dart: 2.1.0
-  geocoding: 2.1.1
   location: 5.0.3
   geolocator: 10.1.0
-  parse_server_sdk: 6.3.0
-  image_picker: 1.0.4
+  parse_server_sdk_flutter: 7.0.0
+  image_picker: 0.8.8
   flutter_map: 4.0.0
   tuple: 2.0.2
+  flutter_local_notifications: ^16.2.0
   flutter:
     sdk: flutter
 
@@ -71,9 +70,12 @@ flutter:
   uses-material-design: true
 
   # To add assets to your application, add an assets section, like this:
-  # assets:
-  #   - images/a_dot_burr.jpeg
-  #   - images/a_dot_ham.jpeg
+  assets:
+     - lib/images/0.png
+     - lib/images/1.png
+     - lib/images/2.png
+     - lib/images/4.png
+     - lib/images/herb.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/assets-and-images/#resolution-aware
